@@ -13,6 +13,7 @@ export default defineAppConfig({
     nav: [
       {
         label: 'Documentation',
+        to: '/docs',
         sections: ['getting-started', 'syntax', 'rendering', 'reference', 'compare', 'kb'],
       },
       { label: 'Plugins', sections: ['plugins'], link: 'section' as const },
