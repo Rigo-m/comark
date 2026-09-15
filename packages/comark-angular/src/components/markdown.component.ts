@@ -116,7 +116,6 @@ export class Markdown implements OnChanges {
         this.document = result
         this.cdr.markForCheck()
       })
-      // Keep the last good document rendered and report the failure.
       .catch((error: unknown) => console.error('[comark] failed to parse markdown', error))
   }
 }

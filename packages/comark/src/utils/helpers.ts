@@ -12,7 +12,6 @@ export function createSerializedTask<TArgs extends unknown[], TResult>(
   let chain: Promise<unknown> = Promise.resolve()
   return (...args: TArgs) => {
     const result = chain.then(() => fn(...args))
-    // Keep the queue alive after a failure, but let this caller see it.
     chain = result.catch(() => undefined)
     return result
   }

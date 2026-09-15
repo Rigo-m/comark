@@ -4,11 +4,6 @@ import { renderToString } from '@vue/server-renderer'
 import type { ComarkPlugin } from 'comark'
 import { Markdown } from '../src/components/Markdown.ts'
 
-/**
- * A failing parse used to resolve to `null` and render an empty document, which
- * hid the error from the app. The initial parse now rejects, so the failure
- * reaches `onErrorCaptured` instead of being rendered as empty content.
- */
 describe('Markdown parse errors', () => {
   it('surfaces an initial parse failure instead of rendering an empty document', async () => {
     const failing: ComarkPlugin = {
