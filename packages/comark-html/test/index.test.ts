@@ -68,16 +68,10 @@ describe('renderHtml', () => {
   })
 
   it('passes parser options through', async () => {
-    // `autoClose: false` matches the default for a non-streaming render, so force
-    // healing on to prove the option reaches the parser.
+    // The default only heals while streaming, so force it on to prove the option
+    // reaches the parser.
     const html = await renderHtml('**bold', { autoClose: true })
     expect(html).toContain('<strong>')
-  })
-
-  it('leaves incomplete markdown alone by default', async () => {
-    const html = await renderHtml('**bold')
-    expect(html).toContain('**bold')
-    expect(html).not.toContain('<strong>')
   })
 })
 

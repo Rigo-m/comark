@@ -246,8 +246,6 @@ describe('Comark Tests', () => {
           )
         }
 
-        // Fixtures never stream, so the `'streaming'` autoClose default leaves
-        // input untouched and the corpus reads as a conformance suite.
         const parseOptions: ParserOptions = {
           autoUnwrap: testCase.options?.autoUnwrap === false ? false : true,
         }

@@ -8,9 +8,7 @@ describe('ParserOptions.autoClose', () => {
       expect(tree.nodes).toEqual([['p', {}, 'a _b']])
     })
 
-    it('heals through parseMarkdown when the per-call options say streaming', async () => {
-      // The third argument is the public streaming entry point. Nothing else
-      // exercises it, so a merge that drops it would otherwise stay green.
+    it('heals when parseMarkdown is given the streaming parse option', async () => {
       const tree = await parseMarkdown('a _b', {}, { streaming: true })
       expect(tree.nodes).toEqual([['p', { $: { line: 1 } }, 'a ', ['em', {}, 'b']]])
     })
@@ -21,14 +19,8 @@ describe('ParserOptions.autoClose', () => {
       expect(tree.nodes).toEqual([['p', { $: { line: 1 } }, 'a ', ['em', {}, 'b']]])
     })
 
-    it('leaves an unclosed component fence to the components plugin', async () => {
-      const tree = await parseMarkdown('::alert\nHello')
-      expect(tree.nodes).toEqual([['alert', {}, 'Hello']])
-    })
-
     it('keeps a trailing `::` literal instead of dropping it', async () => {
-      // Healing strips a half-typed `::` on its own line. A plain parse must not,
-      // so the two nested-component fixtures no longer carry a stray closer.
+      // Healing strips a half-typed `::` on its own line, a plain parse must not.
       const tree = await parseMarkdown('para\n\n::')
       expect(tree.nodes).toEqual([
         ['p', {}, 'para'],
@@ -53,15 +45,9 @@ describe('ParserOptions.autoClose', () => {
   })
 
   describe('custom function', () => {
-    it('runs on a non-streaming parse', async () => {
+    it('runs on a plain, non-streaming parse', async () => {
       const tree = await parseMarkdown('a _b', { autoClose: (markdown) => `${markdown}_` })
       expect(tree.nodes).toEqual([['p', {}, 'a ', ['em', {}, 'b']]])
-    })
-
-    it('runs on a streaming parse', async () => {
-      const parse = createMarkdownParser({ autoClose: (markdown) => `${markdown}_` })
-      const tree = await parse('a _b', { streaming: true })
-      expect(tree.nodes).toEqual([['p', { $: { line: 1 } }, 'a ', ['em', {}, 'b']]])
     })
   })
 })

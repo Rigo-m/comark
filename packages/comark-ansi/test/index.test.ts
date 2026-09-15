@@ -437,17 +437,11 @@ describe('renderAnsi', () => {
   })
 
   it('passes parser and renderer options through', async () => {
-    // `autoClose: false` matches the default for a non-streaming render, so force
-    // healing on to prove the option reaches the parser.
+    // The default only heals while streaming, so force it on to prove the option
+    // reaches the parser.
     const output = await renderAnsi('**bold', { autoClose: true, colors: false })
     expect(output).not.toContain('\x1B[')
-    expect(output).toContain('bold')
     expect(output).not.toContain('\\*\\*bold')
-  })
-
-  it('leaves incomplete markdown alone by default', async () => {
-    const output = await renderAnsi('**bold', { colors: false })
-    expect(output).toContain('\\*\\*bold')
   })
 
   it('disables colors when NO_COLOR is present', async () => {

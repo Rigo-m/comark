@@ -9,8 +9,8 @@ async function renderAsync(element: React.ReactElement): Promise<string> {
   return new Response(stream).text()
 }
 
-// The `streaming` prop drives the renderer (caret, stream components) but it also
-// has to reach the parser: auto-close heals only on a streaming parse.
+// The `streaming` prop has to reach the parser, not just the renderer: auto-close
+// heals only on a streaming parse.
 describe('<Markdown streaming>', () => {
   it('heals incomplete markdown while streaming', async () => {
     const html = await renderAsync(

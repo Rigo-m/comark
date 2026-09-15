@@ -90,8 +90,8 @@ describe('streaming mode', () => {
   })
 
   // The `streaming` prop has to reach the parser, not just the renderer: auto-close
-  // heals only on a streaming parse, so these pass no `options.autoClose`.
-  // Asserted on markup rather than text, because 'wor' is a substring of '**wor'.
+  // heals only on a streaming parse. Asserted on markup because 'wor' is a
+  // substring of '**wor'.
   it('heals incomplete bold from the streaming prop alone', async () => {
     const screen = await render(Markdown, {
       value: 'Hello **wor',
