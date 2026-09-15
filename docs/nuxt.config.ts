@@ -45,6 +45,9 @@ export default defineNuxtConfig({
   },
 
   routeRules: {
+    // Discoverable entry points for agents and crawlers that probe the conventional URLs
+    '/docs': { redirect: '/getting-started/introduction' },
+    '/api': { redirect: '/reference/reference' },
     '/play/booking': { redirect: '/play?example=booking' },
     '/play/recipe': { redirect: '/play?example=recipe' },
     '/play/nuxt-ui': { redirect: '/play?example=nuxt-ui' },
