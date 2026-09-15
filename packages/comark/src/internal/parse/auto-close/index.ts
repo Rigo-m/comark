@@ -31,7 +31,7 @@ export interface AutoCloseOptions {
   /**
    * Drop a trailing opener (`* _ $ : [ { !`) after whitespace at EOF so a
    * half-typed marker does not flash (`hello *` → `hello`). Default false.
-   * Enabled automatically when `parseMarkdown(md, {}, { streaming: true })`.
+   * Enabled automatically when `parseMarkdown(..., { streaming: true })`.
    */
   dropTrailingOpeners?: boolean
 }
@@ -320,20 +320,15 @@ function healInline(text: string, opts: HealOpts): string {
   // 2) Build mutated string for escapes while collecting open markers
   const len = text.length
   const out: string[] = []
-  const stack: Marker[] = []
-  // Source index of the delimiter run that pushed each marker, kept in lockstep
-  // with `stack`. One run of four underscores pushes `__` twice, and both closers
-  // have to be emitted, so `closeOpenStack` needs to tell those apart from two
-  // markers opened at different places.
-  const stackPos: number[] = []
+  let stack: Marker[] = []
 
   let fence = false
   let inCode = false
-  // Backtick count of the open code span, and the index in `out` where its
-  // opening run starts. A code span cannot nest, so one pair of scalars is
-  // enough; `out` is append-only, so the index stays valid in the joined result.
+  // the length of the backtick run that opened the current span: only a run of
+  // the same length closes it, any other run is literal inside it
   let codeRun = 0
-  let codeOpenOut = -1
+  // where that span's content starts in `out`
+  let codeStart = 0
   let inMath = false
   let inBlockMath = false
   let inLatexI = false
@@ -352,27 +347,17 @@ function healInline(text: string, opts: HealOpts): string {
   let doubleAsteriskCount = 0
   let tripleCount = 0
 
-  const push = (m: Marker, pos: number) => {
-    stack.push(m)
-    stackPos.push(pos)
-  }
-
-  const pop = () => {
-    stack.pop()
-    stackPos.pop()
-  }
-
   /** Open only when the run is not followed by space; close only when not preceded by space. */
-  const toggleFlanking = (m: Marker, prevCh: string, afterCh: string, pos: number) => {
+  const toggleFlanking = (m: Marker, prevCh: string, afterCh: string) => {
     const canClose = !isSpace(prevCh) && stack[stack.length - 1] === m
     const canOpen = !isSpace(afterCh)
-    if (canClose) pop()
-    else if (canOpen) push(m, pos)
+    if (canClose) stack.pop()
+    else if (canOpen) stack.push(m)
   }
 
-  const toggle = (m: Marker, pos: number) => {
-    if (stack[stack.length - 1] === m) pop()
-    else push(m, pos)
+  const toggle = (m: Marker) => {
+    if (stack[stack.length - 1] === m) stack.pop()
+    else stack.push(m)
   }
 
   for (let i = 0; i < len; i++) {
@@ -481,20 +466,14 @@ function healInline(text: string, opts: HealOpts): string {
     // Regions that protect markers
     if (inCode) {
       if (ch === '`') {
-        // A code span closes on a backtick run of the same length as its opener.
-        // A shorter or longer run is literal content (CommonMark), which is what
-        // keeps ``Use `code` in your file.`` intact.
-        let end = i
-        while (end + 1 < len && text[end + 1] === '`') end++
-        const run = end - i + 1
-        for (let k = i; k <= end; k++) out.push('`')
-        if (run === codeRun) {
+        let n = 0
+        while (i + n < len && text[i + n] === '`') n++
+        for (let k = 0; k < n; k++) out.push('`')
+        i += n - 1
+        if (n === codeRun) {
           inCode = false
-          codeRun = 0
-          codeOpenOut = -1
-          if (stack[stack.length - 1] === '`') pop()
+          if (stack[stack.length - 1] === '`') stack.pop()
         }
-        i = end
         continue
       }
       out.push(ch)
@@ -506,7 +485,7 @@ function healInline(text: string, opts: HealOpts): string {
         out.push('$')
         i++
         inBlockMath = false
-        if (stack[stack.length - 1] === '$$') pop()
+        if (stack[stack.length - 1] === '$$') stack.pop()
       }
       continue
     }
@@ -514,7 +493,7 @@ function healInline(text: string, opts: HealOpts): string {
       out.push(ch)
       if (ch === '$' && next !== '$') {
         inMath = false
-        if (stack[stack.length - 1] === '$') pop()
+        if (stack[stack.length - 1] === '$') stack.pop()
       }
       continue
     }
@@ -584,23 +563,18 @@ function healInline(text: string, opts: HealOpts): string {
 
     // Code
     if (ch === '`') {
-      let end = i
-      while (end + 1 < len && text[end + 1] === '`') end++
-      const run = end - i + 1
-      if (run >= 3) {
-        // The fence handling above only fires at the start of a line, so this is
-        // what keeps a mid-line run of three or more from opening a span: it is
-        // copied verbatim and never becomes an inline span.
-        for (let k = i; k <= end; k++) out.push('`')
-        i = end
+      if (next === '`' && text[i + 2] === '`') {
+        // triple on non-line-start — copy
+        out.push('`', '`', '`')
+        i += 2
         continue
       }
-      codeOpenOut = out.length
-      for (let k = i; k <= end; k++) out.push('`')
+      codeRun = next === '`' ? 2 : 1
+      for (let k = 0; k < codeRun; k++) out.push('`')
+      i += codeRun - 1
       inCode = true
-      codeRun = run
-      push('`', i)
-      i = end
+      codeStart = out.length
+      stack.push('`')
       continue
     }
 
@@ -612,12 +586,12 @@ function healInline(text: string, opts: HealOpts): string {
         i++
         if (opts.math) {
           inBlockMath = !inBlockMath
-          toggle('$$', i - 1)
+          toggle('$$')
         }
       } else if (opts.math && looksLikeInlineMathOpen(text, i)) {
         // Skip currency (`$100`) and component names (`::$special`)
         inMath = true
-        push('$', i)
+        stack.push('$')
       }
       continue
     }
@@ -646,10 +620,10 @@ function healInline(text: string, opts: HealOpts): string {
           continue
         }
         asteriskTotal += run
-        if (run === 1) toggleFlanking('*', prev, after, i)
+        if (run === 1) toggleFlanking('*', prev, after)
         else if (run === 2) {
           doubleAsteriskCount++
-          toggleFlanking('**', prev, after, i)
+          toggleFlanking('**', prev, after)
         } else if (run >= 3) {
           // Horizontal rule: a whole line of ≥3 * (with only spaces) is not emphasis
           let ls = i
@@ -677,24 +651,21 @@ function healInline(text: string, opts: HealOpts): string {
             const hasBold = stack.includes('**')
             if (hasStar && hasBold && !leftSpace) {
               for (let si = stack.length - 1; si >= 0; si--) {
-                if (stack[si] === '*' || stack[si] === '**') {
-                  stack.splice(si, 1)
-                  stackPos.splice(si, 1)
-                }
+                if (stack[si] === '*' || stack[si] === '**') stack.splice(si, 1)
               }
               doubleAsteriskCount++
             } else {
               tripleCount++
-              toggleFlanking('***', prev, after, i)
+              toggleFlanking('***', prev, after)
             }
           } else {
             // ****+
             const pairs = Math.floor(run / 2)
             for (let p = 0; p < pairs; p++) {
               doubleAsteriskCount++
-              toggleFlanking('**', prev, after, i)
+              toggleFlanking('**', prev, after)
             }
-            if (run % 2 === 1) toggleFlanking('*', prev, after, i)
+            if (run % 2 === 1) toggleFlanking('*', prev, after)
           }
           i = end
           continue
@@ -734,13 +705,13 @@ function healInline(text: string, opts: HealOpts): string {
       }
 
       if (!(isWord(prev) && isWord(after)) && !surrounded) {
-        if (run === 1) toggleFlanking('_', prev, after, i)
+        if (run === 1) toggleFlanking('_', prev, after)
         else if (run >= 2) {
           const pairs = Math.floor(run / 2)
           for (let p = 0; p < pairs; p++) {
-            toggleFlanking('__', prev, after, i)
+            toggleFlanking('__', prev, after)
           }
-          if (run % 2 === 1) toggleFlanking('_', prev, after, i)
+          if (run % 2 === 1) toggleFlanking('_', prev, after)
         }
       }
       i = end
@@ -756,7 +727,7 @@ function healInline(text: string, opts: HealOpts): string {
       for (let k = i; k <= end; k++) out.push('~')
       if (!surrounded && run >= 2) {
         const pairs = Math.floor(run / 2)
-        for (let p = 0; p < pairs; p++) toggleFlanking('~~', prev, after, i)
+        for (let p = 0; p < pairs; p++) toggleFlanking('~~', prev, after)
       }
       // single ~ not stacked (SPEC escapes or leaves alone)
       i = end
@@ -804,8 +775,9 @@ function healInline(text: string, opts: HealOpts): string {
   // SPEC: `**bold with `code` → `**bold with `code**``
   // Markers that opened *before* the code span must close inside it.
   if (inCode) {
-    const afterBq = codeOpenOut >= 0 ? result.slice(codeOpenOut + codeRun) : ''
-    if (afterBq.length > 0) {
+    // the span's content, less a trailing backtick run that is not a closer
+    const content = result.slice(codeStart).replace(/`+$/, '')
+    if (content.length > 0) {
       // Markers still on stack before the open ` need closing inside the span.
       // Open order is outer→inner left-to-right; close reverse order after content.
       let codeIdx = -1
@@ -823,9 +795,8 @@ function healInline(text: string, opts: HealOpts): string {
         const m = stack[si]
         if (m === '**' || m === '*' || m === '__' || m === '_' || m === '~~' || m === '***') inner += m
       }
-      // A backtick run already at the end merges with the closer we are about to
-      // append, so only add what that run still needs. A run longer than the
-      // opener can never be turned into a closer, so leave the text alone.
+      // A trailing backtick run merges with the closer, so only what that run
+      // still needs is added. A longer run than the opener cannot become one.
       const base = result + inner
       let trail = 0
       while (trail < base.length && base[base.length - 1 - trail] === '`') trail++
@@ -836,7 +807,7 @@ function healInline(text: string, opts: HealOpts): string {
   }
 
   // Build suffix inside-out with half-close handling
-  result = closeOpenStack(result, stack, stackPos, {
+  result = closeOpenStack(result, stack, {
     asteriskTotal,
     doubleAsteriskCount,
     tripleCount,
@@ -882,16 +853,9 @@ function isBareOrHr(text: string): boolean {
   return false
 }
 
-/** An open marker plus the source index of the delimiter run that opened it. */
-interface OpenMarker {
-  m: Marker
-  pos: number
-}
-
 function closeOpenStack(
   text: string,
   stack: Marker[],
-  stackPos: number[],
   counts: { asteriskTotal: number; doubleAsteriskCount: number; tripleCount: number }
 ): string {
   // Half-closes first
@@ -910,9 +874,9 @@ function closeOpenStack(
   const balancedOverlap =
     counts.doubleAsteriskCount >= 2 && counts.doubleAsteriskCount % 2 === 0 && counts.asteriskTotal % 2 === 0
 
-  let workStack: OpenMarker[] = stack.map((m, i) => ({ m, pos: stackPos[i] }))
+  let workStack = stack.slice()
   if (balancedOverlap) {
-    workStack = workStack.filter(({ m }) => m !== '***' && m !== '**' && m !== '*')
+    workStack = workStack.filter((m) => m !== '***' && m !== '**' && m !== '*')
   }
 
   // SPEC nested formatting: when multiple markers are open, close from the inside
@@ -923,36 +887,38 @@ function closeOpenStack(
   //   `_italic and **bold` → `_italic and **bold**_`
   //   `~~strike with **bold` → `~~strike with **bold**~~`
 
-  const closable: OpenMarker[] = []
+  const closable: Marker[] = []
   // Scan stack from top (innermost)
   for (let i = workStack.length - 1; i >= 0; i--) {
-    const open = workStack[i]
-    const m = open.m
-    if (m === '$$' || m === '$') {
-      closable.push(open)
+    const m = workStack[i]
+    if (m === '$$') {
+      closable.push('$$')
+      continue
+    }
+    if (m === '$') {
+      closable.push('$')
       continue
     }
     if (m === '`') continue
 
     const token = m
-    const at = text.lastIndexOf(token)
-    if (at < 0) continue
-    const after = text.slice(at + token.length)
+    const pos = text.lastIndexOf(token)
+    if (pos < 0) continue
+    const after = text.slice(pos + token.length)
     if (!hasClosableContentAfter(after)) continue
-    closable.push(open)
+    closable.push(m)
   }
 
   if (closable.length === 0) return text
 
   // Collapse same-family asterisk closers: if both *** / ** / * appear, keep only innermost needed.
   // Prefer: if top (first in closable which is reverse stack) is * and ** is also closable, only *.
-  const isStar = (m: Marker) => m === '*' || m === '**' || m === '***'
-  const hasStarFamily = closable.some(({ m }) => isStar(m))
+  const hasStarFamily = closable.includes('*') || closable.includes('**') || closable.includes('***')
   if (hasStarFamily) {
     // Innermost open asterisk marker is first in closable (stack was reversed)
     let firstStar: Marker | null = null
-    for (const { m } of closable) {
-      if (isStar(m)) {
+    for (const m of closable) {
+      if (m === '*' || m === '**' || m === '***') {
         firstStar = m
         break
       }
@@ -961,34 +927,23 @@ function closeOpenStack(
     // If only ** open, close **
     // If *** open, close ***
     // Exception cross nests are separate tokens
-    if (firstStar === '*' && closable.some(({ m }) => m === '**') && !closable.some(({ m }) => m === '***')) {
+    if (firstStar === '*' && closable.includes('**') && !closable.includes('***')) {
       // **bold and *italic → only *
       // BUT *italic with **bold → stack [*, **] top is ** → firstStar ** → close ***?
       // For * outer + ** inner: firstStar is ** (top), emit ** then * = *** which matches SPEC
       // So only strip ** when * is TOP (innermost)
       // closable[0] is top of stack
-      if (closable[0].m === '*') {
+      if (closable[0] === '*') {
         // remove ** and *** from closable
         for (let ci = closable.length - 1; ci >= 0; ci--) {
-          if (closable[ci].m === '**' || closable[ci].m === '***') closable.splice(ci, 1)
+          if (closable[ci] === '**' || closable[ci] === '***') closable.splice(ci, 1)
         }
       }
     }
   }
 
-  // Two same-token closers emitted back to back merge into a different marker:
-  // `a _b and _c` produced `__`, which reads as strong and nested an em inside
-  // an em. Collapse each run to one closer, but only when the two openers came
-  // from different delimiter runs. `____a` opens `__` twice from one run of four
-  // and needs both closers, and non-adjacent repeats are left alone anyway,
-  // since `_a **b _c` legitimately closes `_`, `**`, `_`.
-  const emitted = closable.filter((tok, ci) => {
-    const prev = closable[ci - 1]
-    return !prev || tok.m !== prev.m || tok.pos === prev.pos
-  })
-
   let suffix = ''
-  for (const { m } of emitted) {
+  for (const m of closable) {
     if (m === '$$') {
       if (text.endsWith('$') && !text.endsWith('$$')) suffix += '$'
       else {
