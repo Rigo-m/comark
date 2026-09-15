@@ -72,8 +72,10 @@ This is an alert component
           parsed = result
         }
       })
-      // Keep the last good document rendered and report the failure.
-      .catch((error) => console.error('[comark] failed to parse markdown', error))
+      .catch((error) => {
+        if (currentVersion > appliedVersion) appliedVersion = currentVersion
+        console.error('[comark] failed to parse markdown', error)
+      })
   })
 </script>
 
