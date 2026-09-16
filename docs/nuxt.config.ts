@@ -22,6 +22,34 @@ export default defineNuxtConfig({
       description:
         'Complete Comark documentation as plain markdown — getting started, syntax, rendering, plugins, API reference, comparisons, and examples.',
     },
+    sections: [
+      {
+        title: 'When to use Comark',
+        description: [
+          'Reach for Comark when a JavaScript or TypeScript project has to parse Markdown into a serializable document and render it itself: CommonMark and GFM with components, attributes and frontmatter, rendered to HTML, ANSI, Vue, React, Svelte or Angular.',
+          'It fits Markdown that arrives incrementally, such as an LLM response streamed into a chat UI, since unfinished syntax is healed while streaming.',
+          'It is not a static site generator and has no runtime API of its own: install the npm packages and call them in your code.',
+          'To help someone with Comark, read the page that covers their question with get-page on the MCP endpoint at https://comark.dev/mcp, or fetch it as markdown from the raw URL listed below.',
+        ].join(' '),
+        links: [
+          {
+            title: 'Installation',
+            description: 'Which package to install for each parser and renderer.',
+            href: '/getting-started/installation',
+          },
+          {
+            title: 'parseMarkdown',
+            description: 'The parser call, its options and the document it returns.',
+            href: '/reference/parse',
+          },
+          {
+            title: 'Streaming',
+            description: 'A chat UI that renders a streamed AI response as it arrives.',
+            href: '/examples/ai/nuxt-ai-sdk',
+          },
+        ],
+      },
+    ],
   },
 
   app: {
