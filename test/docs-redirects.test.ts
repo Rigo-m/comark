@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { join, relative } from 'node:path'
+import { join, relative, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 // Every `routeRules` redirect in the docs app must land on a page that exists: a
@@ -21,7 +21,7 @@ function walk(dir: string): string[] {
 function contentPath(file: string): string {
   const segments = relative(contentDir, file)
     .replace(/\.md$/, '')
-    .split('/')
+    .split(sep)
     .map((segment) => segment.replace(/^\d+\./, ''))
   if (segments[segments.length - 1] === 'index') segments.pop()
   return '/' + segments.join('/')
@@ -31,7 +31,7 @@ function contentPath(file: string): string {
 function pagePath(file: string): string {
   const segments = relative(pagesDir, file)
     .replace(/\.vue$/, '')
-    .split('/')
+    .split(sep)
   if (segments[segments.length - 1] === 'index') segments.pop()
   return '/' + segments.join('/')
 }
