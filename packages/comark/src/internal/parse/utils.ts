@@ -1,23 +1,5 @@
 import type { Node, ElementNode, ElementNodeAttributes, MarkdownDocument } from 'comark'
-import { decodeHTML, TREE_WALK_MAX_DEPTH } from 'comark/utils'
-
-/** HTML void elements — never have children / closing tags. */
-const HTML_VOID_ELEMENTS = new Set([
-  'area',
-  'base',
-  'br',
-  'col',
-  'embed',
-  'hr',
-  'img',
-  'input',
-  'link',
-  'meta',
-  'param',
-  'source',
-  'track',
-  'wbr',
-])
+import { decodeHTML, isHtmlVoidElement, TREE_WALK_MAX_DEPTH } from 'comark/utils'
 
 export type ParsedHtmlTag =
   | { kind: 'open'; tag: string; attrs: Record<string, unknown>; selfClosing: boolean }
@@ -173,7 +155,7 @@ export function parseHtmlInline(content: string): ParsedHtmlTag {
     const tag = openMatch[1]
     const attrsStr = openMatch[2] || ''
     const slash = openMatch[3] === '/'
-    const selfClosing = slash || HTML_VOID_ELEMENTS.has(tag.toLowerCase())
+    const selfClosing = slash || isHtmlVoidElement(tag)
     return {
       kind: 'open',
       tag,

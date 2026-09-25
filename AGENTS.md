@@ -86,7 +86,7 @@ packages/comark/
 │   │   ├── task-list.ts      # GFM task lists
 │   │   └── toc.ts            # Table of contents
 │   ├── utils/                # Shared utilities (comark/utils entry point)
-│   │   ├── index.ts          # textContent(), visit(), visitAsync(), escapeHtml(), indent(), string/object utils
+│   │   ├── index.ts          # textContent(), visit(), visitAsync(), escapeHtml(), isHtmlVoidElement(), indent(), string/object utils
 │   │   ├── helpers.ts        # defineComarkPlugin(), dedupePlugins()
 │   │   ├── trace.ts          # ComarkTracer helpers: noopTracer, withSpan() (comark/utils/trace)
 │   │   └── caret.ts          # Caret utilities for streaming
@@ -481,7 +481,15 @@ import { renderMarkdown } from 'comark/render'
 
 // Document model types and utilities
 import type { MarkdownDocument, Node, ElementNode, TextNode, CommentNode } from 'comark'
-import { textContent, visit, visitAsync, escapeHtml, isMarkdownDocument } from 'comark/utils'
+import {
+  textContent,
+  visit,
+  visitAsync,
+  escapeHtml,
+  isHtmlVoidElement,
+  HTML_VOID_ELEMENTS,
+  isMarkdownDocument,
+} from 'comark/utils'
 import { noopTracer, withSpan } from 'comark/utils/trace'
 
 // Core plugins — use when calling parseMarkdown() directly (framework-agnostic)

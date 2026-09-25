@@ -137,6 +137,32 @@ export async function visitAsync(
 
 // #region String Utils
 
+/**
+ * HTML void elements. They never have children or a closing tag.
+ * @see https://html.spec.whatwg.org/multipage/syntax.html#void-elements
+ */
+export const HTML_VOID_ELEMENTS: ReadonlySet<string> = new Set([
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
+])
+
+/** Whether `tag` is an HTML void element. Comparison is case-insensitive. */
+export function isHtmlVoidElement(tag: string): boolean {
+  return HTML_VOID_ELEMENTS.has(tag.toLowerCase())
+}
+
 const HTML_ESCAPE_RE = /[&<>"]/g
 const HTML_ESCAPED_RE = /^&[a-zA-Z][a-zA-Z0-9]*;|#[0-9]+;|#x[0-9a-fA-F]+;/
 export function escapeHtml(value: string, replace?: Record<string, string | undefined>): string {
