@@ -63,10 +63,12 @@ function compareIfValue(operator: IfComparisonOperator, value: unknown, expected
 export function shouldRenderIf(props: IfProps): boolean {
   let hasComparison = false
   for (const operator of IF_COMPARISON_OPERATORS) {
-    if (!Object.hasOwn(props, operator)) continue
+    // Own-property check so an inherited `eq`/`value` cannot opt a plain object in.
+    // `hasOwnProperty` rather than `Object.hasOwn` so ES2020 consumers can typecheck this source.
+    if (!Object.prototype.hasOwnProperty.call(props, operator)) continue
     hasComparison = true
 
-    if (!Object.hasOwn(props, 'value') || props.value === undefined) return false
+    if (!Object.prototype.hasOwnProperty.call(props, 'value') || props.value === undefined) return false
     const expected = props[operator]
     if (expected === undefined || !compareIfValue(operator, props.value, expected)) return false
   }
