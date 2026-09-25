@@ -314,6 +314,46 @@ after \`code\`
     expect(result.nodes).toEqual([['pre', {}, ['code', {}, '<!-- note -->']]])
   })
 
+  it('keeps a <pre> body literal, including markdown markers', async () => {
+    const result = await parseMarkdown(`<pre>
+  const x = 1
+  **not**
+</pre>`)
+
+    expect(result.nodes).toEqual([['pre', { $: { html: 1, block: 1 } }, '\n  const x = 1\n  **not**\n']])
+  })
+
+  it('keeps <script> and <textarea> bodies verbatim, including inner tags', async () => {
+    const script = await parseMarkdown(`<script type="module">
+  if (a < b) return
+  const el = '<div>**no**</div>'
+</script>`)
+    const area = await parseMarkdown(`<textarea>
+  <b>**no**</b>
+</textarea>`)
+
+    expect(script.nodes).toEqual([
+      [
+        'script',
+        { $: { html: 1, block: 1 }, type: 'module' },
+        "\n  if (a < b) return\n  const el = '<div>**no**</div>'\n",
+      ],
+    ])
+    expect(area.nodes).toEqual([['textarea', { $: { html: 1, block: 1 } }, '\n  <b>**no**</b>\n']])
+  })
+
+  it('keeps attributed <pre> and <style> bodies literal', async () => {
+    const pre = await parseMarkdown(`<pre class="x">
+  const x = 1
+</pre>`)
+    const style = await parseMarkdown(`<style class="x">
+  .a { color: red; }
+</style>`)
+
+    expect(pre.nodes).toEqual([['pre', { $: { html: 1, block: 1 }, class: 'x' }, '\n  const x = 1\n']])
+    expect(style.nodes).toEqual([['style', { $: { html: 1, block: 1 }, class: 'x' }, '\n  .a { color: red; }\n']])
+  })
+
   it('styles', async () => {
     const result = await parseMarkdown(`<style>
   .warning {
@@ -341,7 +381,7 @@ after \`code\`
             html: 1,
           },
         },
-        `.warning {
+        `\n  .warning {
     color: red;
   }
   .success {
@@ -350,7 +390,8 @@ after \`code\`
 
   .info {
     color: blue;
-  }`,
+  }
+  `,
       ],
       ['p', { $: { html: 1, block: 0 }, class: 'warning' }, 'This is a warning message.'],
       ['p', { $: { html: 1, block: 0 }, class: 'success' }, 'Your changes have been saved.'],

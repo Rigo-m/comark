@@ -8,12 +8,19 @@
  * Pass `registerDefaultPlugins: false` (and omit this plugin) to treat HTML
  * tags as plain text.
  *
+ * Contract: `SPEC/HTML/README.md` (block vs inline, markdown vs literal,
+ * deferred cases). Fixtures live beside it; option matrix in
+ * `test/html-block.test.ts`.
+ *
  * Options:
  * - `markdown` (default `true`): expand text leaves inside closed HTML
  *   fragments as inline markdown (`<h1>Hello **World**</h1>` → strong).
- *   When `false`, text inside HTML stays literal (CommonMark default for
- *   closed html_blocks). Blank-line bodies still nest as markdown tokens
- *   via bare open/close pairing.
+ *   Implemented by narrowing markdown-exit's `html_block` rule to `<style>`,
+ *   `<pre>`, `<script>`, and `<textarea>` so the rest tokenizes as normal
+ *   markdown. Those four stay verbatim: every character between the tags is kept,
+ *   and an inner tag is text. When `false`, that rule stays and every closed-block
+ *   body stays literal. Blank-line bodies still nest as markdown tokens via bare
+ *   open/close pairing, in both modes.
  *
  * @example
  * ```ts
@@ -61,12 +68,8 @@ function markdownItHtmlWithMarkdown(md: MarkdownExit) {
   const html_block = md.block.ruler.__rules__.find((r) => r.name === 'html_block')
   const fn = html_block.fn
   html_block.fn = (state: StateBlock, startLine: number, endLine: number, silent: boolean) => {
-    let pos = state.bMarks[startLine] + state.tShift[startLine]
-
-    const tag = state.src.substring(pos, pos + 7)
-    if (tag === '<style' || tag === `<style>`) {
-      return fn(state, startLine, endLine, silent)
-    }
+    const pos = state.bMarks[startLine] + state.tShift[startLine]
+    if (isRawHtmlBlock(state.src, pos)) return fn(state, startLine, endLine, silent)
   }
 }
 
@@ -125,6 +128,33 @@ function isLetter(code: number): boolean {
   return (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a)
 }
 
+/** CommonMark type-1 raw blocks whose body is kept verbatim. `<prelude>` does not match. */
+const RAW_HTML_TAGS = new Set(['style', 'pre', 'script', 'textarea'])
+
+/** Read `<name` or `</name` at `pos`. `after` is the index of the first character after the name. */
+function readTag(src: string, pos: number): { name: string; close: boolean; after: number } | null {
+  if (src.charCodeAt(pos) !== 0x3c /* < */) return null
+  let i = pos + 1
+  const close = src.charCodeAt(i) === 0x2f /* / */
+  if (close) i += 1
+  const start = i
+  while (i < src.length && isLetter(src.charCodeAt(i))) i += 1
+  if (i === start) return null
+  return { name: src.slice(start, i).toLowerCase(), close, after: i }
+}
+
+function isTagBoundary(src: string, pos: number): boolean {
+  if (pos >= src.length) return true
+  const next = src.charCodeAt(pos)
+  return next === 0x3e /* > */ || next === 0x2f /* / */ || next <= 0x20
+}
+
+/** True when `src` at `pos` opens a raw HTML block, including attributes. */
+function isRawHtmlBlock(src: string, pos: number): boolean {
+  const tag = readTag(src, pos)
+  return !!tag && !tag.close && RAW_HTML_TAGS.has(tag.name) && isTagBoundary(src, tag.after)
+}
+
 /**
  * Body text inside a closed HTML block stays literal.
  *
@@ -151,12 +181,27 @@ function literalText(content: string): string {
   return start >= end ? '' : content.slice(start, end)
 }
 
-function pushText(tokens: Token[], content: string) {
-  const textContent = literalText(content)
+function pushText(tokens: Token[], content: string, verbatim = false) {
+  const textContent = verbatim ? content : literalText(content)
   if (!textContent) return
   const text = new Token('text', '', 0)
   text.content = textContent
   tokens.push(text)
+}
+
+function pushHtml(tokens: Token[], content: string) {
+  const html = new Token('html_inline', '', 0)
+  html.content = content
+  tokens.push(html)
+}
+
+/** End index of `</name …>`, or -1. Whitespace before `>` is allowed. */
+function rawCloserEnd(src: string, pos: number, name: string): number {
+  const tag = readTag(src, pos)
+  if (!tag?.close || tag.name !== name) return -1
+  let j = tag.after
+  while (j < src.length && src.charCodeAt(j) <= 0x20) j += 1
+  return src.charCodeAt(j) === 0x3e /* > */ ? j + 1 : -1
 }
 
 /**
@@ -181,9 +226,29 @@ export function htmlToTokens(str: string): Token[] {
         const match = str.slice(pos).match(HTML_TAG_RE)
         if (match) {
           if (pos > textStart) pushText(tokens, str.slice(textStart, pos))
-          const html = new Token('html_inline', '', 0)
-          html.content = match[0]
-          tokens.push(html)
+          const raw = readTag(match[0], 0)
+          // style / pre / script / textarea: body is source until the closer, inner tags included.
+          if (raw && !raw.close && RAW_HTML_TAGS.has(raw.name) && match[0].charCodeAt(match[0].length - 2) !== 0x2f) {
+            pushHtml(tokens, match[0])
+            const from = pos + match[0].length
+            let end = -1
+            for (let i = from; i < len; i += 1) {
+              if (str.charCodeAt(i) !== 0x3c /* < */) continue
+              end = rawCloserEnd(str, i, raw.name)
+              if (end < 0) continue
+              pushText(tokens, str.slice(from, i), true)
+              pushHtml(tokens, str.slice(i, end))
+              pos = end
+              break
+            }
+            if (end < 0) {
+              pushText(tokens, str.slice(from), true)
+              return tokens
+            }
+            textStart = pos
+            continue
+          }
+          pushHtml(tokens, match[0])
           pos += match[0].length
           textStart = pos
           continue
