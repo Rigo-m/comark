@@ -43,6 +43,33 @@ describe('html({ markdown })', () => {
     expect(result.nodes).toEqual([['div', { $: { html: 1, block: 1 } }, 'Hello **World**']])
   })
 
+  it('keeps spaces beside and between inline tags when markdown: false', async () => {
+    const result = await parseMarkdown('<p>Hello <em>x</em> <a>two</a></p>', {
+      plugins: [html({ markdown: false })],
+    })
+
+    expect(result.nodes).toEqual([
+      [
+        'p',
+        { $: { html: 1, block: 1 } },
+        'Hello ',
+        ['em', { $: { html: 1, block: 0 } }, 'x'],
+        ' ',
+        ['a', { $: { html: 1, block: 0 } }, 'two'],
+      ],
+    ])
+  })
+
+  it('keeps a space before an inline tag inside a multiline HTML block when markdown: false', async () => {
+    const result = await parseMarkdown('<div>\nHello <em>x</em>\n</div>', {
+      plugins: [html({ markdown: false })],
+    })
+
+    expect(result.nodes).toEqual([
+      ['div', { $: { html: 1, block: 1 } }, 'Hello ', ['em', { $: { html: 1, block: 0 } }, 'x']],
+    ])
+  })
+
   it('parses markdown inside closed HTML after a blank line when markdown: false', async () => {
     const result = await parseMarkdown('<div>\n\nHello **World**\n\n</div>', {
       plugins: [html({ markdown: false })],
@@ -328,6 +355,25 @@ after \`code\`
       ['p', { $: { html: 1, block: 0 }, class: 'warning' }, 'This is a warning message.'],
       ['p', { $: { html: 1, block: 0 }, class: 'success' }, 'Your changes have been saved.'],
       ['p', { $: { html: 1, block: 0 }, class: 'info' }, 'More information is available here.'],
+    ])
+  })
+
+  it('two consecutive tags without a blank line between close and open', async () => {
+    const result = await parseMarkdown(`
+<div>
+This is a warning message.
+</div><div>
+
+Your changes have been saved.
+
+</div>
+  `)
+
+    // First div closes inside its opening paragraph → block: 0 (text-only body).
+    // Second spans a free markdown paragraph → block: 1.
+    expect(result.nodes).toEqual([
+      ['div', { $: { html: 1, block: 0 } }, 'This is a warning message.'],
+      ['div', { $: { html: 1, block: 1 } }, 'Your changes have been saved.'],
     ])
   })
 })

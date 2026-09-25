@@ -125,13 +125,37 @@ function isLetter(code: number): boolean {
   return (code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a)
 }
 
+/**
+ * Body text inside a closed HTML block stays literal.
+ *
+ * Newline-bearing runs are structural: drop whitespace-only gaps between tags
+ * and strip the surrounding indent, including end-of-line padding before a
+ * trailing newline. Horizontal whitespace is significant — a space between
+ * inline tags (`</a> <a>`) or beside text (`Hello <em>`) must survive.
+ */
+function literalText(content: string): string {
+  if (!/[\r\n]/.test(content)) return content
+
+  let start = 0
+  let end = content.length
+
+  if (/^\s*[\r\n]/.test(content)) {
+    const nonSpace = content.search(/\S/)
+    if (nonSpace < 0) return ''
+    start = nonSpace
+  }
+
+  const trailing = /[ \t]*(?:\r\n|\n|\r)[ \t]*$/.exec(content)
+  if (trailing && trailing.index >= start) end = trailing.index
+
+  return start >= end ? '' : content.slice(start, end)
+}
+
 function pushText(tokens: Token[], content: string) {
-  // Mirror htmlparser2's ontext trim: drop whitespace-only runs between tags and
-  // strip structural indentation / surrounding newlines from body text.
-  const trimmed = content.trim()
-  if (!trimmed) return
+  const textContent = literalText(content)
+  if (!textContent) return
   const text = new Token('text', '', 0)
-  text.content = trimmed
+  text.content = textContent
   tokens.push(text)
 }
 
