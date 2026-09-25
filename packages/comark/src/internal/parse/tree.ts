@@ -17,6 +17,13 @@ const WRAPPER_TAGS = new Set(['ul', 'ol', 'table', 'blockquote', 'pre'])
 type ProcessorResult = {
   nextIndex: number
   node?: Node
+  /**
+   * When true, `node` is a completed HTML sibling of whatever is still open on
+   * `htmlStack` (e.g. `</div><div>` left free `div` + a new open frame). Emit it
+   * at the current document level without nesting into the remaining stack —
+   * matching how parse5 / hast-util-raw places sequential root children.
+   */
+  siblingOfHtmlStack?: boolean
 }
 
 export interface ProcessorOptions {
@@ -232,7 +239,10 @@ function processChildren(
 
     const result = processToken(tokens, i, state)
     if (result) {
-      if (result.node !== undefined) pushNode(children, result.node)
+      // Same nesting rule as processInline: free nodes join the open HTML
+      // frame when nestHtml is on (e.g. block children under bare HTML).
+      const node = nestHtml ? deliverInline(state, result.node) : result.node
+      if (node !== undefined) pushNode(children, node)
       i = result.nextIndex
     } else {
       i += 1
@@ -465,6 +475,13 @@ const processors: Record<string, Processor> = {
             nextIndex,
             node: ['p', processAttributes(tokens[start].attrs), ...mergeAdjacentTextNodes(children)],
           }
+    /** Emit free siblings produced while an HTML frame stayed open (e.g. `</div><div>`). */
+    const freeSiblings = (asSiblingOfStack: boolean): ProcessorResult => {
+      if (children.length === 0) return { nextIndex, node: undefined }
+      const node =
+        children.length === 1 ? children[0] : (['fragment', {}, ...children] as ElementNode)
+      return { nextIndex, node, siblingOfHtmlStack: asSiblingOfStack || undefined }
+    }
 
     // Closed HTML root that started before this paragraph.
     if (depthBefore > 0 && state.htmlStack.length === 0) {
@@ -474,11 +491,15 @@ const processors: Record<string, Processor> = {
       return asParagraph()
     }
 
-    // Stack still open — free content already nested via deliverInline.
+    // Stack still open — free content already nested via deliverInline into the
+    // current parent. The one remaining case is close-then-open at document
+    // root (`</div><div>`): the closed node sits free in `children` while a new
+    // frame is open, and must emit as a sibling of that frame (parse5-style),
+    // not nest into it.
     if (state.htmlStack.length > 0) {
       if (nestHtml) {
         for (const frame of state.htmlStack) flushPendingInline(frame)
-        return { nextIndex, node: undefined }
+        return freeSiblings(children.length > 0)
       }
       return asParagraph()
     }
@@ -537,10 +558,12 @@ const processors: Record<string, Processor> = {
 
     return { nextIndex: start + 1, node: content }
   },
-  // html_inline drives the document-wide HTML open stack.
+  // html_inline drives the document-wide HTML open stack — the same shape
+  // hast-util-raw feeds parse5: open tags push, close tags pop (and auto-close
+  // mismatched intermediates), void/self-closing emit immediately.
   // - self-closing / void → single element
   // - open → push frame (siblings / later blocks fill children)
-  // - matching close → pop frame and emit completed element
+  // - matching close → pop frame(s) and emit completed element
   html_inline(tokens, start, state) {
     const raw = tokens[start].content || ''
     const parsed = parseHtmlInline(raw)
@@ -556,11 +579,28 @@ const processors: Record<string, Processor> = {
     }
 
     if (parsed.kind === 'close') {
-      const top = state.htmlStack[state.htmlStack.length - 1]
-      if (top && top.tag === parsed.tag) {
-        return { nextIndex: start + 1, node: frameToNode(state.htmlStack.pop()!) }
+      // Find the matching open frame (case-insensitive), auto-closing any
+      // nested frames above it the way a real HTML parser would.
+      const closeTag = parsed.tag.toLowerCase()
+      let idx = state.htmlStack.length - 1
+      while (idx >= 0) {
+        const frameTag = state.htmlStack[idx].tag
+        if (frameTag !== null && frameTag.toLowerCase() === closeTag) break
+        idx--
       }
-      return { nextIndex: start + 1, node: undefined }
+      if (idx < 0) return { nextIndex: start + 1, node: undefined }
+
+      let closed: Node | undefined
+      while (state.htmlStack.length > idx) {
+        const node = frameToNode(state.htmlStack.pop()!)
+        // Nested auto-closed frames nest into the next outer open frame.
+        if (state.htmlStack.length > idx) {
+          deliverInline(state, node)
+        } else {
+          closed = node
+        }
+      }
+      return { nextIndex: start + 1, node: closed }
     }
 
     if (parsed.selfClosing) {
@@ -618,8 +658,14 @@ export function tokenListToTree(tokens: Token[], options: ProcessorOptions = {})
         if (state.preservePositions) {
           preserveLineNumber(tokens, result.node, i, result.nextIndex, state)
         }
-        const free = deliverBlock(state, result.node)
-        if (free !== undefined) pushNode(nodes, free)
+        // Sibling free nodes from close-then-open (`</div><div>`) sit beside the
+        // remaining open stack, not inside it — same as parse5 root children.
+        if (result.siblingOfHtmlStack) {
+          pushNode(nodes, result.node)
+        } else {
+          const free = deliverBlock(state, result.node)
+          if (free !== undefined) pushNode(nodes, free)
+        }
       }
       i = result.nextIndex
     } else {
