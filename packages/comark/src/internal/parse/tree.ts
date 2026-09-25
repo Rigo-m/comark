@@ -478,8 +478,7 @@ const processors: Record<string, Processor> = {
     /** Emit free siblings produced while an HTML frame stayed open (e.g. `</div><div>`). */
     const freeSiblings = (asSiblingOfStack: boolean): ProcessorResult => {
       if (children.length === 0) return { nextIndex, node: undefined }
-      const node =
-        children.length === 1 ? children[0] : (['fragment', {}, ...children] as ElementNode)
+      const node = children.length === 1 ? children[0] : (['fragment', {}, ...children] as ElementNode)
       return { nextIndex, node, siblingOfHtmlStack: asSiblingOfStack || undefined }
     }
 
