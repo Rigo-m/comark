@@ -43,32 +43,32 @@ export interface HtmlPluginOptions {
 export default defineComarkPlugin((opts: HtmlPluginOptions = {}) => {
   const markdown = opts.markdown !== false
 
-  function markdownItHtml(md: MarkdownExit) {
-    md.set({ html: true })
-
-    // Opt-out marker read by createMarkdownParser: when present, closed HTML
-    // body text stays literal instead of being re-parsed as inline markdown.
-    if (markdown) {
-      // @ts-expect-error - internal utils
-      const html_block = md.block.ruler.__rules__.find((r) => r.name === 'html_block')
-      const fn = html_block.fn
-      html_block.fn = (state: StateBlock, startLine: number, endLine: number, silent: boolean) => {
-        let pos = state.bMarks[startLine] + state.tShift[startLine]
-
-        const tag = state.src.substring(pos, pos + 7)
-        if (tag === '<style' || tag === `<style>`) {
-          return fn(state, startLine, endLine, silent)
-        }
-      }
-    }
-  }
-
   return {
     name: 'html',
-    markdownItPlugins: [markdownItHtml as unknown as MarkdownItPlugin],
+    markdownItPlugins: [markdown ? markdownItHtmlWithMarkdown : markdownItHtmlWithoutMarkdown],
     markdownItPost: markdownItPost,
   }
 })
+
+const markdownItHtmlWithoutMarkdown: MarkdownItPlugin = (md: MarkdownExit) => {
+  md.set({ html: true })
+}
+
+const markdownItHtmlWithMarkdown: MarkdownItPlugin = (md: MarkdownExit) => {
+  markdownItHtmlWithoutMarkdown(md)
+
+  // @ts-expect-error - internal utils
+  const html_block = md.block.ruler.__rules__.find((r) => r.name === 'html_block')
+  const fn = html_block.fn
+  html_block.fn = (state: StateBlock, startLine: number, endLine: number, silent: boolean) => {
+    let pos = state.bMarks[startLine] + state.tShift[startLine]
+
+    const tag = state.src.substring(pos, pos + 7)
+    if (tag === '<style' || tag === `<style>`) {
+      return fn(state, startLine, endLine, silent)
+    }
+  }
+}
 
 function markdownItPost(state: ComarkParseTokensState) {
   let i = 0
