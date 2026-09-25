@@ -29,7 +29,7 @@
  */
 
 import { type StateBlock, Token, type MarkdownExit } from 'markdown-exit'
-import type { ComarkParseTokensState, MarkdownItPlugin } from '../types.ts'
+import type { ComarkParseTokensState } from '../types.ts'
 import { defineComarkPlugin } from '../utils/helpers.ts'
 
 export interface HtmlPluginOptions {
@@ -50,11 +50,11 @@ export default defineComarkPlugin((opts: HtmlPluginOptions = {}) => {
   }
 })
 
-const markdownItHtmlWithoutMarkdown: MarkdownItPlugin = (md: MarkdownExit) => {
+function markdownItHtmlWithoutMarkdown(md: MarkdownExit) {
   md.set({ html: true })
 }
 
-const markdownItHtmlWithMarkdown: MarkdownItPlugin = (md: MarkdownExit) => {
+function markdownItHtmlWithMarkdown(md: MarkdownExit) {
   markdownItHtmlWithoutMarkdown(md)
 
   // @ts-expect-error - internal utils
